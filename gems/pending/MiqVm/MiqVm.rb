@@ -48,6 +48,11 @@ class MiqVm
             @vmConfig = VmConfig.new(getCfg(@ost.snapId))
             $log.debug "MiqVm::initialize: @vmConfig.getHash = #{@vmConfig.getHash.inspect}"
             $log.debug "MiqVm::initialize: @vmConfig.getDiskFileHash = #{@vmConfig.getDiskFileHash.inspect}"
+        elsif (@scvmm = @ost.miq_scvmm)
+          $log.debug "MiqVm::initialize: accessing VM through SCVMM server" if $log.debug?
+          @scvmm_vm = @scvmm.get_vm(vmCfg)
+          $log.debug "MiqVm::initialize: setting @ost.miq_scvmm_vm = #{@scvmm_vm.class}" if $log.debug?
+          @vmConfig = VmConfig.new(@scvmm_vm.getCfg(@ost.snapId))
         else
             @vimVm = nil
             @vmConfig = VmConfig.new(vmCfg)
