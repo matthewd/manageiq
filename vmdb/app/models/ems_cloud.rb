@@ -1,4 +1,6 @@
 class EmsCloud < ExtManagementSystem
+  include AuditMixin
+
   SUBCLASSES = %w{
     EmsAmazon
     EmsOpenstack
@@ -27,6 +29,19 @@ class EmsCloud < ExtManagementSystem
     raise NotImplementedError unless Rails.env.development?
     require 'util/miq-system'
     MiqSystem.open_browser(browser_url)
+  end
+
+  def values_for_audit
+    values = {}
+
+    [:default, :metrics, :amqp].each do |authtype|
+      if has_authentication_type?(authtype)
+        values[:"#{authtype}_userid"] = authentication_userid(authtype)
+        values[:"#{authtype}_password"] = authentication_password(authtype)
+      end
+    end
+
+    values
   end
 end
 

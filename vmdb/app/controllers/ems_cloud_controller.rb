@@ -24,14 +24,11 @@ class EmsCloudController < ApplicationController
     assert_privileges("#{model.to_s.underscore}_edit")
 
     @ems = find_by_id_filtered(model, params[:id])
-    set_model_data @ems, params
 
-    if @ems.valid? && @ems.save
+    if @ems.audited_save { set_model_data @ems, params }
       @ems.reload
       flash = _("%{model} \"%{name}\" was saved") %
               {:model => ui_lookup(:model => model.to_s), :name => @ems.name}
-
-      # AuditEvent.success(build_saved_audit(update_ems, @edit))
 
       render :update do |page|
         page.redirect_to ems_cloud_path(@ems, :flash_msg => flash)
@@ -58,11 +55,10 @@ class EmsCloudController < ApplicationController
       end
     else
       @ems = model.model_from_emstype(params[:server_emstype]).new
-      set_model_data @ems, params
 
       name = ui_lookup(:tables => table_name)
 
-      if @ems.valid? && @ems.save
+      if @ems.audited_save { set_model_data @ems, params }
         render :update do |page|
           page.redirect_to :action => 'show_list', :flash_msg => _("%{model} \"%{name}\" was saved") % {:model => name, :name => @ems.name}
         end
