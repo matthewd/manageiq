@@ -90,6 +90,8 @@ unless ENV['APPLIANCE']
   end
 
   group :test do
+    gem "sqlite3",                      :require => false
+
     gem "brakeman",         "~>2.0",    :require => false
 
     gem "shoulda-matchers", "~>1.0.0",  :require => false

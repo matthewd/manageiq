@@ -3,9 +3,14 @@ module AuditMixin
     result = nil
 
     transaction(:requires_new => true) do
-      changes = changes_for_audit do
-        yield if block_given?
+      if block_given?
+        changes = changes_for_audit do
+          yield
+          result = save
+        end
+      else
         result = save
+        changes = changes_for_audit
       end
 
       if result
@@ -27,8 +32,11 @@ module AuditMixin
     AuditEvent.success(audit_event(event, current_user, detail))
   end
 
+  IGNORED_KEYS = %w(created_at updated_at lock_version).freeze
+  private_constant :IGNORED_KEYS
+
   def all_values_for_audit
-    attributes.merge(values_for_audit).stringify_keys
+    attributes.merge(values_for_audit).stringify_keys.except(*IGNORED_KEYS)
   end
 
   def prepare_for_audit
@@ -60,7 +68,7 @@ module AuditMixin
       :event        => "#{self.class.to_s.downcase}_#{event}",
       :target_id    => id,
       :target_class => self.class.base_class.name,
-      :userid       => current_user.id,
+      :userid       => current_user.try(:id),
       :message      => message,
     }
   end
@@ -110,7 +118,8 @@ module AuditMixin
   end
 
   def skip_attribute_for_audit?(attribute)
-    attribute.ends_with?("password2") ||
+    attribute.in?(IGNORED_KEYS) ||
+      attribute.ends_with?("password2") ||
       attribute.ends_with?("verify")
   end
 end
