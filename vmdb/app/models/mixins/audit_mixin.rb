@@ -28,7 +28,7 @@ module AuditMixin
   end
 
   def all_values_for_audit
-    attributes.merge(values_for_audit)
+    attributes.merge(values_for_audit).stringify_keys
   end
 
   def prepare_for_audit
@@ -45,7 +45,7 @@ module AuditMixin
 
     audit_after = all_values_for_audit
 
-    hash_changes(audit_before, audit_after)
+    HashDiff.diff(audit_before, audit_after)
   end
 
   def audit_event(event, current_user, detail)
@@ -66,8 +66,10 @@ module AuditMixin
   end
 
   def audit_details(changes)
-    changes.map do |k, (before, after)|
+    changes.map do |op, k, before, after|
       next if skip_attribute_for_audit?(k)
+
+      before, after = nil, before if op == '+'
 
       if mask_attribute_for_audit?(k)
         masked_before = before.presence && '*'
@@ -110,18 +112,5 @@ module AuditMixin
   def skip_attribute_for_audit?(attribute)
     attribute.ends_with?("password2") ||
       attribute.ends_with?("verify")
-  end
-
-  private
-
-  def hash_changes(a, b)
-    x = {}
-    a.each do |k, v|
-      x[k] = [v, b[k]]
-    end
-    b.each do |k, v|
-      x[k] = [nil, v]
-    end
-    x
   end
 end
