@@ -1494,6 +1494,8 @@ Vmdb::Application.routes.draw do
         sample_chart
         sample_timeline
         send_report_data
+        tree_autoload_dynatree
+        tree_select
         widget_json
       ),
       :post => %w(
