@@ -3,13 +3,13 @@ $LOAD_PATH.push("#{File.dirname(__FILE__)}/../../util")
 require 'miq-unicode'
 require 'binary_struct'
 require 'MiqDisk'
-require 'MiqMemory'
+require 'memory_buffer'
 require 'MiqLargeFile'
 
 module VhdxDisk
   # NOTE: All values are stored in network byte order.
 
-  VHDX_FILE_IDENTIFIER               = BinaryStruct.new([
+  VHDX_FILE_IDENTIFIER = BinaryStruct.new([
     'Q<',   'signature',        # Always 'vhdxfile'.
     'A256', 'creator',          # Parser that created the vhdx.
   ])
@@ -89,11 +89,11 @@ module VhdxDisk
     'A16', 'item_id',           # item_id and isuser pair must be unique within the table
     'I<',   'offset',           # offset relative to beginning of the metadata region >= 64KB
     'I<',   'length',           # < = 1MB
-    # 'I<',   'bit_fields',
-    'b32',   'bit_fields',
-    # 'B1',  'is_user',         # system or user metadata
-    # 'B1',  'is_virtual_disk', # file or virtual disk metadata
-    # 'B1',  'is_required',     #
+    # 'I<'  'bit_fields',
+    'b32',  'bit_fields',
+    # 'B1', 'is_user',          # system or user metadata
+    # 'B1', 'is_virtual_disk',  # file or virtual disk metadata
+    # 'B1', 'is_required',      #
     # 'B29', 'reserved',
     'I<',   'reserved2'
   ])
@@ -115,7 +115,7 @@ module VhdxDisk
     PARENT_LOCATOR_GUID       => :parent_locator_header
   }
 
-  ALLOCATION_STATUS                  = {
+  ALLOCATION_STATUS = {
     PAYLOAD_BLOCK_NOT_PRESENT   => false,
     PAYLOAD_BLOCK_UNDEFINED     => false,
     PAYLOAD_BLOCK_ZERO          => false,
@@ -123,7 +123,7 @@ module VhdxDisk
     PAYLOAD_BLOCK_FULLY_PRESENT => true
   }
 
-  VHDX_FILE_PARAMETERS               = BinaryStruct.new([
+  VHDX_FILE_PARAMETERS = BinaryStruct.new([
     'I<',   'block_size',       # size of payload block in bytes between 1MB & 256MB
     'b32',  'bit_fields',
     # 'B1',  'leave_blocks_allocated',
@@ -133,22 +133,22 @@ module VhdxDisk
   SIZEOF_VHDX_FILE_PARAMETERS        = VHDX_FILE_PARAMETERS.size
 
   VHDX_VIRTUAL_DISK_SIZE             = BinaryStruct.new([
-    'Q<',   'virtual_disk_size' # size in bytes.  must be a multiple of logical sector size
+    'Q<', 'virtual_disk_size' # size in bytes.  must be a multiple of logical sector size
   ])
-  SIZEOF_VHDX_VIRTUAL_DISK_SIZE      = VHDX_VIRTUAL_DISK_SIZE.size
+  SIZEOF_VHDX_VIRTUAL_DISK_SIZE = VHDX_VIRTUAL_DISK_SIZE.size
 
   VHDX_LOGICAL_SECTOR_SIZE = BinaryStruct.new([
-    'I<',   'logical_sector_size' # size in bytes.  must be 512 or 4096
+    'I<', 'logical_sector_size' # size in bytes.  must be 512 or 4096
   ])
-  SIZEOF_VHDX_LOGICAL_SECTOR_SIZE    = VHDX_LOGICAL_SECTOR_SIZE.size
+  SIZEOF_VHDX_LOGICAL_SECTOR_SIZE = VHDX_LOGICAL_SECTOR_SIZE.size
 
   VHDX_PHYSICAL_SECTOR_SIZE = BinaryStruct.new([
-    'I<',   'physical_sector_size' # size in bytes.  must be 512 or 4096
+    'I<', 'physical_sector_size' # size in bytes.  must be 512 or 4096
   ])
   SIZEOF_VHDX_PHYSICAL_SECTOR_SIZE   = VHDX_PHYSICAL_SECTOR_SIZE.size
 
   VHDX_PAGE_83_DATA                  = BinaryStruct.new([
-    'A16',  'page_83_data'      # unique guid
+    'A16', 'page_83_data' # unique guid
   ])
   SIZEOF_VHDX_PAGE_83_DATA           = VHDX_PAGE_83_DATA.size
 
@@ -166,7 +166,7 @@ module VhdxDisk
     'S<',   'key_length',       # length of the entry's key
     'S<',   'value_length',     # length of the entry's value
   ])
-  SIZEOF_VHDX_PARENT_LOCATOR_ENTRY   = VHDX_PARENT_LOCATOR_ENTRY.size
+  SIZEOF_VHDX_PARENT_LOCATOR_ENTRY = VHDX_PARENT_LOCATOR_ENTRY.size
 
   attr_reader :file_identifier_signature, :vhdx_header_signature, :dInfo
   def d_init
@@ -179,6 +179,13 @@ module VhdxDisk
     @has_parent           = nil
     @parent_locator       = nil
     @file_name            = dInfo.fileName
+    @vhdx_file = connection_to_file(dInfo)
+    header_section
+  end
+
+  def connection_to_file(dInfo)
+    @hyperv_connection    = nil
+    @hyperv_connection    = dInfo.hyperv_connection if dInfo.hyperv_connection
     if dInfo.mountMode.nil? || dInfo.mountMode == "r"
       dInfo.mountMode     = "r"
       file_mode           = "r"
@@ -187,8 +194,12 @@ module VhdxDisk
     else
       raise "Unrecognized mountMode: #{dInfo.mountMode}"
     end
-    @vhdx_file            = MiqLargeFile.open(@file_name, file_mode)
-    header_section
+    if @hyperv_connection
+      @vhdx_file = connect_to_hyperv
+    else
+      @vhdx_file = MiqLargeFile.open(@file_name, file_mode)
+    end
+    @vhdx_file
   end
 
   def d_read(pos, len)
@@ -199,15 +210,15 @@ module VhdxDisk
     this_len    = @blockSize
     (block_start..block_end).each do |block_number|
       real_sector_start   = (block_number == block_start) ? sector_start : 0
-      real_sector_end     = (block_number == block_end)   ? sector_end   : @sectors_per_block - 1
+      real_sector_end     = (block_number == block_end) ? sector_end : @sectors_per_block - 1
       (real_sector_start..real_sector_end).each do |sector_number|
-        if (block_start   == block_end)   && (sector_start == sector_end)
+        if (block_start == block_end) && (sector_start == sector_end)
           byte_offset     = byte_offset_start
           this_len        = len
         elsif (block_number == block_start) && (sector_number == sector_start)
           byte_offset     = byte_offset_start
           this_len        = @blockSize - byte_offset
-        elsif (block_number == block_end)   && (sector_number == sector_end)
+        elsif (block_number == block_end) && (sector_number == sector_end)
           this_len        = len - buf.length
           raise "Internal Error: Calculated read more than sector: #{this_len}" if this_len > @blockSize
         end
@@ -245,7 +256,7 @@ module VhdxDisk
 
   def read_unallocated_buf(pos, len, buf)
     if @has_parent.nil?
-      buf << MiqMemory.create_zero_buffer(len)
+      buf << MemoryBuffer.create(len)
     else
       buf << @parent.d_read(pos + buf.length, len)
     end
@@ -256,10 +267,10 @@ module VhdxDisk
     @vhdx_header           = header(1)
     unless valid_header_signature?
       $log.info "Invalid VHDX Header Signature #{@vhdx_header_signature}"
-      @vhdx_header         = header(2)
+      @vhdx_header = header(2)
     end
     raise "Invalid VHDX Header Signature #{@vhdx_header_signature}" unless valid_header_signature?
-    @region_table_header   = region_table(1)
+    @region_table_header = region_table(1)
     unless valid_region_table_header?
       $log.info "Invalid Region Table Header Signature #{@region_table_header_signature}"
       @region_table_header = header(2)
@@ -291,9 +302,9 @@ module VhdxDisk
   end
 
   def region_table(table_number)
-    table_offset            = 2 * VHDX_HEADER_OFFSET + table_number * VHDX_REGION_TABLE_HEADER_OFFSET
+    table_offset = 2 * VHDX_HEADER_OFFSET + table_number * VHDX_REGION_TABLE_HEADER_OFFSET
     @vhdx_file.seek(table_offset, IO::SEEK_SET)
-    region_table_header     = VHDX_REGION_TABLE_HEADER.decode(@vhdx_file.read(SIZEOF_VHDX_REGION_TABLE_HEADER))
+    region_table_header = VHDX_REGION_TABLE_HEADER.decode(@vhdx_file.read(SIZEOF_VHDX_REGION_TABLE_HEADER))
     @region_table_header_signature = region_table_header['signature']
     unless valid_region_table_header?
       $log.info "Invalid Region Table Header #{@region_table_header_signature}"
@@ -309,10 +320,6 @@ module VhdxDisk
     end
     process_metadata_table_header
     process_bat
-    @bat.each do |bat_entry|
-      state = bat_entry['state']
-      $log.debug "Block #{bat_entry['block']} State #{state} Offset #{bat_entry['offset']}" unless state == 0
-    end
   end
 
   def valid_region_table_header?
@@ -320,7 +327,7 @@ module VhdxDisk
   end
 
   def process_region_table_entry(table_offset, count)
-    offset_to_entry    = table_offset + SIZEOF_VHDX_REGION_TABLE_HEADER + (count - 1) * SIZEOF_VHDX_REGION_TABLE_ENTRY
+    offset_to_entry = table_offset + SIZEOF_VHDX_REGION_TABLE_HEADER + (count - 1) * SIZEOF_VHDX_REGION_TABLE_ENTRY
     @vhdx_file.seek(offset_to_entry, IO::SEEK_SET)
     region_table_entry = VHDX_REGION_TABLE_ENTRY.decode(@vhdx_file.read(SIZEOF_VHDX_REGION_TABLE_ENTRY))
     region_table_guid  = region_table_entry['guid']
@@ -339,12 +346,13 @@ module VhdxDisk
 
   def process_bat
     @vhdx_file.seek(@bat_offset, IO::SEEK_SET)
-    @bat                  = []
+    @bat = []
     1.step(@total_bat_entries, 1) do |block_num|
       next_bat_entry      = VHDX_BAT_ENTRY.decode(@vhdx_file.read(SIZEOF_VHDX_BAT_ENTRY))
       state               = next_bat_entry['state'][5..7].to_i(2)  # only the 3 least significant bits
       file_offset_mb      = next_bat_entry['file_offset_mb'] >> 4  # shift to get the last 44 bits.
-      @bat                << BatEntry.new(block_num, state, file_offset_mb)
+      @bat << BatEntry.new(block_num, state, file_offset_mb)
+      $log.debug "Block #{block_num} State #{state} Offset #{file_offset_mb}" unless state == 0
     end
   end
 
@@ -364,9 +372,9 @@ module VhdxDisk
     @sector_bitmap_blocks_count = (@data_blocks_count / @chunk_ratio).ceil
     @sectors_per_block          = @payload_block_size / @logical_sector_size
     if @has_parent
-      @total_bat_entries        = @sector_bitmap_blocks_count * (@chunk_ratio + 1)
+      @total_bat_entries = @sector_bitmap_blocks_count * (@chunk_ratio + 1)
     else
-      @total_bat_entries        = @data_blocks_count + ((@data_blocks_count - 1) / @chunk_ratio).floor
+      @total_bat_entries = @data_blocks_count + ((@data_blocks_count - 1) / @chunk_ratio).floor
     end
   end
 
@@ -384,15 +392,15 @@ module VhdxDisk
     @is_required     = bits[2].to_i(2)
     if length == 0
       raise "Invalid Metadata Table Entry - Length Zero and Offset is #{offset}" if offset != 0
-      log.debug "Metadata Table Entry Present but Empty"
+      $log.debug "Metadata Table Entry Present but Empty"
       return
     end
     @vhdx_file.seek(offset, IO::SEEK_SET)
-    guid_found       = nil
+    guid_found = nil
     METADATA_OPS.each do |meta_guid, op|
       next unless guid_match?(guid, meta_guid)
       method(op).call(offset)
-      guid_found   = guid
+      guid_found = guid
       break
     end
     raise "Invalid Metadata Table Entry GUID #{guid}" unless guid_found
@@ -436,8 +444,6 @@ module VhdxDisk
 
   def parent_locator_header(offset)
     raise "Inconsistent filesystem - \'Has_Parent\' Flag unset but Parent Locator Info Present" if @has_parent.nil?
-    @converter                = Encoding::Converter.new("UTF-16LE", "UTF-8")
-    @parent_locator_offset    = offset
     @parent_locator           = VHDX_PARENT_LOCATOR_HEADER.decode(@vhdx_file.read(SIZEOF_VHDX_PARENT_LOCATOR_HEADER))
     @parent_locator_entries   = {}
     key_value_count           = @parent_locator['key_value_count']
@@ -445,46 +451,50 @@ module VhdxDisk
     raise "Invalid Parent Locator Type Guid #{guid}" unless guid_match?(guid, VHDX_PARENT_LOCATOR_TYPE_GUID)
     return if key_value_count == 0
     (1..key_value_count).each do |i|
-      @vhdx_file.seek(@parent_locator_offset + SIZEOF_VHDX_PARENT_LOCATOR_HEADER +
+      @vhdx_file.seek(offset + SIZEOF_VHDX_PARENT_LOCATOR_HEADER +
                      (i - 1) * SIZEOF_VHDX_PARENT_LOCATOR_ENTRY, IO::SEEK_SET)
-      process_parent_locator_entry
+      process_parent_locator_entry(offset)
     end
-    keys                      = @parent_locator_entries.keys
+    keys = @parent_locator_entries.keys
     $log.warn "Missing \"parent_linkage\" Parent Locator Entry" if keys.index("parent_linkage").nil?
     parent_locators_to_path(keys)
   end
 
   def parent_locators_to_path(keys)
     if keys.index("absolute_win32_path")
-      parent_path            = strip_path_prefix(@parent_locator_entries["absolute_win32_path"])
+      parent_path = strip_path_prefix(@parent_locator_entries["absolute_win32_path"])
     elsif keys.index("relative_path")
-      parent_path            = File.dirname(@file_name) + '/' + @parent_locator_entries["relative_path"]
+      parent_path = File.dirname(@file_name) + '/' + @parent_locator_entries["relative_path"]
     elsif keys.index("volume_path")
       # TODO: Test Volume Path Parent Locator
-      parent_path            = strip_path_prefix(@parent_locator_entries["volume_path"])
+      parent_path = strip_path_prefix(@parent_locator_entries["volume_path"])
     else
       raise "Missing Parent Locator entries \"relative_path\", \"volume_path\", and \"absolute_win32_path\""
     end
-    @parent_ostruct          = OpenStruct.new
-    @parent_ostruct.fileName = parent_path
-    @parent                  = MiqDisk.getDisk(@parent_ostruct)
-    raise "Unable to access parent disk #{parent_path}" if @parent.nil?
+    @parent = parent_disk(parent_path)
+  end
+
+  def parent_disk(path)
+    @parent_ostruct                   = OpenStruct.new
+    @parent_ostruct.fileName          = path
+    @parent_ostruct.hyperv_connection = @hyperv_connection if @hyperv_connection
+    parent                            = MiqDisk.getDisk(@parent_ostruct)
+    $log.debug "Got parent disk for #{parent_path}"
+    raise "Unable to access parent disk #{parent_path}" if parent.nil?
+    parent
   end
 
   def strip_path_prefix(path)
-    path[0, 4] == "\\\\?\\" ?  path[4..-1] : path
+    path[0, 4] == "\\\\?\\" ? path[4..-1] : path
   end
 
-  def process_parent_locator_entry
+  def process_parent_locator_entry(offset)
+    @converter   = Encoding::Converter.new("UTF-16LE", "UTF-8")
     entry        = VHDX_PARENT_LOCATOR_ENTRY.decode(@vhdx_file.read(SIZEOF_VHDX_PARENT_LOCATOR_ENTRY))
-    key_offset   = entry['key_offset']
-    value_offset = entry['value_offset']
-    key_length   = entry['key_length']
-    value_length = entry['value_length']
-    @vhdx_file.seek(@parent_locator_offset + key_offset, IO::SEEK_SET)
-    key          = @converter.convert(@vhdx_file.read(key_length)).gsub(/\"/, '')
-    @vhdx_file.seek(@parent_locator_offset + value_offset, IO::SEEK_SET)
-    value        = @converter.convert(@vhdx_file.read(value_length)).gsub(/\"/, '')
+    @vhdx_file.seek(offset + entry['key_offset'], IO::SEEK_SET)
+    key = @converter.convert(@vhdx_file.read(entry['key_length'])).gsub(/\"/, '')
+    @vhdx_file.seek(offset + entry['value_offset'], IO::SEEK_SET)
+    value = @converter.convert(@vhdx_file.read(entry['value_length'])).gsub(/\"/, '')
     @parent_locator_entries[key] = value
   end
 
@@ -492,10 +502,10 @@ module VhdxDisk
     if @virtual_disk_size > 0 && @payload_block_size > 0 && @logical_sector_size > 0 && @physical_sector_size > 0
       return true
     end
-    log.warn "Disk Size #{@virtual_disk_size}"
-    log.warn "Block Size #{@blockSize}"
-    log.warn "Logical Sector Size #{@logical_sector_size}"
-    log.warn "Physical Sector Size #{physical_sector_size}"
+    $log.warn "Disk Size #{@virtual_disk_size}"
+    $log.warn "Block Size #{@blockSize}"
+    $log.warn "Logical Sector Size #{@logical_sector_size}"
+    $log.warn "Physical Sector Size #{physical_sector_size}"
     nil
   end
 
@@ -539,6 +549,13 @@ module VhdxDisk
   def bat_offset(block_number)
     bat_entry = @bat[block_number]
     bat_entry['offset'] * BAT_OFFSET_UNITS
+  end
+
+  def connect_to_hyperv
+    connection = @hyperv_connection
+    hyperv_disk = MiqHyperVDisk.new(connection[:host], connection[:user], connection[:password], connection[:port])
+    hyperv_disk.open(@file_name)
+    hyperv_disk
   end
 end
 
