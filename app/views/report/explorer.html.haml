@@ -6,7 +6,7 @@
   - content_for :trees do
     - @built_trees.each do |tree|
       %div{:style => "display:none"}
-        = render(:partial => 'shared/tree', :locals => { :tree => tree, :name => tree.name.to_s })
+        = render(:partial => 'shared/tree', :locals => {:tree => tree, :name => tree.name.to_s})
   #main_div.main_div
     - @lists.each do |list|
       = render :partial => list

@@ -671,8 +671,8 @@ class ReportController < ApplicationController
     trees[:reports]      = build_report_listnav    if replace_trees.include?(:reports)      || rebuild
     trees[:schedules]    = build_schedules_tree    if replace_trees.include?(:schedules)
     trees[:savedreports] = build_savedreports_tree if replace_trees.include?(:savedreports) || rebuild
-    trees[:db]           = build_db_tree           if replace_trees.include?(:db)           || rebuild
-    trees[:widgets]      = build_widgets_tree      if replace_trees.include?(:widgets)      || rebuild
+    trees[:db]           = build_db_tree           if replace_trees.include?(:db) || rebuild
+    trees[:widgets]      = build_widgets_tree      if replace_trees.include?(:widgets) || rebuild
 
     presenter = ExplorerPresenter.new(
       :active_tree => x_active_tree,
