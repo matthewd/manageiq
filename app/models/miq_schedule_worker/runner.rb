@@ -120,7 +120,7 @@ class MiqScheduleWorker::Runner < MiqWorker::Runner
     end
 
     # These schedules need to be run on all servers regardless of the server's role
-    @schedules[:all] ||= Array.new
+    @schedules[:all] ||= []
     @schedules[:all].concat(builder.schedules)
   end
 
@@ -197,7 +197,7 @@ class MiqScheduleWorker::Runner < MiqWorker::Runner
       builder.schedule_every(every, :first_in => every) { enqueue([:ems_refresh_timer, klass]) }
     end
 
-    @schedules[:scheduler] ||= Array.new
+    @schedules[:scheduler] ||= []
     @schedules[:scheduler].concat(builder.schedules)
   end
 
@@ -232,7 +232,7 @@ class MiqScheduleWorker::Runner < MiqWorker::Runner
     _log.info("database_metrics_purge_schedule: #{sched}")
     builder.cron(sched, :tags => [:database_metrics_purge_schedule]) { enqueue(:metric_purge_all_timer) }
 
-    @schedules[:database_operations] ||= Array.new
+    @schedules[:database_operations] ||= []
     @schedules[:database_operations].concat(builder.schedules)
     @schedules[:database_operations]
   end
@@ -249,7 +249,7 @@ class MiqScheduleWorker::Runner < MiqWorker::Runner
     _log.info("ldap_synchronization_schedule: #{sched}")
 
     builder.cron(sched, :tags => [:ldap_synchronization_schedule]) { enqueue(:ldap_server_sync_data_from_timer) }
-    @schedules[:ldap_synchronization] ||= Array.new
+    @schedules[:ldap_synchronization] ||= []
     @schedules[:ldap_synchronization].concat(builder.schedules)
   end
 
@@ -277,7 +277,7 @@ class MiqScheduleWorker::Runner < MiqWorker::Runner
       enqueue(:metric_purging_purge_rollup_timer)
     end
 
-    @schedules[:ems_metrics_coordinator] ||= Array.new
+    @schedules[:ems_metrics_coordinator] ||= []
     @schedules[:ems_metrics_coordinator].concat(builder.schedules)
   end
 
@@ -292,9 +292,11 @@ class MiqScheduleWorker::Runner < MiqWorker::Runner
 
     # Schedule - Policy Event Purging
     interval = worker_setting_or_default(:policy_events_purge_interval, 1.day)
-    builder.schedule_every(interval, :first_in => "300s", :tags => [:policy_event]) { enqueue(:policy_event_purge_timer) }
+    builder.schedule_every(interval, :first_in => "300s", :tags => [:policy_event]) do
+      enqueue(:policy_event_purge_timer)
+    end
 
-    @schedules[:event] ||= Array.new
+    @schedules[:event] ||= []
     @schedules[:event].concat(builder.schedules)
   end
 
@@ -346,7 +348,7 @@ class MiqScheduleWorker::Runner < MiqWorker::Runner
     sched = cfg.config.fetch_path(*storage_inventory_full_refresh_schedule)
     _log.info("storage_inventory_full_refresh_schedule: #{sched}")
     builder.cron(sched) { enqueue(:storage_refresh_inventory) }
-    @schedules[:storage_metrics_coordinator] ||= Array.new
+    @schedules[:storage_metrics_coordinator] ||= []
     @schedules[:storage_metrics_coordinator].concat(builder.schedules)
   end
 
@@ -382,7 +384,7 @@ class MiqScheduleWorker::Runner < MiqWorker::Runner
     raise "invalid method: #{options[:method]}" unless @user_scheduler.respond_to?(options[:method])
 
     options[:tags].to_miq_a << CLASS_TAG
-    @schedules[:scheduler] ||= Array.new
+    @schedules[:scheduler] ||= []
     if options[:months]
       self.rufus_add_monthly_schedule(options)
     else
