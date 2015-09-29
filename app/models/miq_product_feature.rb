@@ -122,7 +122,7 @@ class MiqProductFeature < ActiveRecord::Base
   def seed_vm_explorer_for_custom_roles
     return unless self.identifier == "vm_explorer"
 
-    MiqUserRole.all.select { |r| r.feature_identifiers.include?("vm") && !r.feature_identifiers.include?("vm_explorer") }.each do |role|
+    MiqUserRole.includes(:miq_product_features).select { |r| r.feature_identifiers.include?("vm") && !r.feature_identifiers.include?("vm_explorer") }.each do |role|
       role.miq_product_features << self
       role.save!
     end
