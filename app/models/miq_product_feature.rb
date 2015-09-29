@@ -85,12 +85,8 @@ class MiqProductFeature < ActiveRecord::Base
       self.seed_from_hash(YAML.load_file(fixture), idents_from_hash, root_feature)
     end
 
-    idents_from_db = self.all.collect(&:identifier)
-    deletes = idents_from_db - (idents_from_db & idents_from_hash)
-    unless deletes.empty?
-      _log.info("Deleting product features: #{deletes.inspect}")
-      self.destroy_all(:identifier => deletes)
-    end
+    deletes = where.not(:identifier => idents_from_hash).destroy_all
+    _log.info("Deleting product features: #{deletes.collect(&:identifier).inspect}") unless deletes.empty?
   end
 
   def self.seed_from_hash(hash, seen = [], parent=nil)
