@@ -6,9 +6,7 @@ class MiqProductFeature < ActiveRecord::Base
   validates_presence_of   :identifier
   validates_uniqueness_of :identifier
 
-  FIXTURE_DIR  = File.join(Rails.root, "db/fixtures")
-  FIXTURE_PATH = File.join(FIXTURE_DIR, self.table_name)
-  FIXTURE_YAML = "#{FIXTURE_PATH}.yml"
+  FIXTURE_YAML = Rails.root.join("db", "fixtures", "#{table_name}.yml")
 
   DETAIL_ATTRS = [
     :name,
@@ -79,11 +77,6 @@ class MiqProductFeature < ActiveRecord::Base
   def self.seed_features
     idents_from_hash = []
     self.seed_from_hash(YAML.load_file(FIXTURE_YAML), idents_from_hash)
-
-    root_feature = MiqProductFeature.where(:identifier => 'everything').first
-    Dir.glob(File.join(FIXTURE_PATH, "*.yml")).each do |fixture|
-      self.seed_from_hash(YAML.load_file(fixture), idents_from_hash, root_feature)
-    end
 
     deletes = where.not(:identifier => idents_from_hash).destroy_all
     _log.info("Deleting product features: #{deletes.collect(&:identifier).inspect}") unless deletes.empty?
