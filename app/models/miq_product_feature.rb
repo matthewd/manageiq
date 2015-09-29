@@ -75,31 +75,34 @@ class MiqProductFeature < ActiveRecord::Base
   end
 
   def self.seed_features
-    seen = Hash.new([])
-    self.seed_from_hash(YAML.load_file(FIXTURE_YAML), seen)
+    features = all.to_a.index_by(&:identifier)
+    seen = seed_from_hash(YAML.load_file(FIXTURE_YAML), seen, nil, features)
 
     deletes = where.not(:identifier => seen.values.flatten).destroy_all
     _log.info("Deleting product features: #{deletes.collect(&:identifier).inspect}") unless deletes.empty?
     seen
   end
 
-  def self.seed_from_hash(hash, seen = {}, parent=nil)
+  def self.seed_from_hash(hash, seen = nil, parent = nil, features = nil)
+    seen ||= Hash.new { |h, k| h[k] = [] }
+
     children = hash.delete(:children) || []
     hash.delete(:parent_identifier)
 
-    hash[:parent] = parent
-    feature, status = seed_feature(hash)
-    seen[status] = [] unless seen.key?(status)
+    hash[:parent]   = parent
+    feature, status = seed_feature(hash, features)
     seen[status] << hash[:identifier]
 
     children.each do |child|
-      self.seed_from_hash(child, seen, feature)
+      seed_from_hash(child, seen, feature, features)
     end
+    seen
   end
 
-  def self.seed_feature(hash)
+  def self.seed_feature(hash, features)
+    feature = features ? features[hash[:identifier]] : find_by(:identifier => hash[:identifier])
+
     status = :unchanged
-    feature = self.find_by_identifier(hash[:identifier])
     if feature
       feature.attributes = hash
       if feature.changed?
