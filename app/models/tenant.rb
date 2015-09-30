@@ -175,6 +175,10 @@ class Tenant < ActiveRecord::Base
     ae_domains.where(:system => false).order('priority DESC')
   end
 
+  def self.current_tenant
+    User.current_user.try(:current_tenant) || Tenant.default_tenant
+  end
+
   # The default tenant is the tenant to be used when
   # the url does not map to a known domain or subdomain
   #

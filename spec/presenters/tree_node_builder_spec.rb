@@ -131,6 +131,11 @@ describe TreeNodeBuilder do
     end
 
     it 'MiqAeNamespace node' do
+      root_tenant = EvmSpecHelper.create_root_tenant
+      user = FactoryGirl.create(:user)
+      User.stub(:current_user).and_return(user)
+      user.stub(:current_tenant).and_return(root_tenant)
+
       namespace = FactoryGirl.build(:miq_ae_namespace)
       node = TreeNodeBuilder.build(namespace, nil, {})
       node.should_not be_nil
@@ -336,6 +341,42 @@ describe TreeNodeBuilder do
       tenant = FactoryGirl.build(:tenant)
       node = TreeNodeBuilder.build(tenant, "root", :expand => true, :open_all => true)
       node[:expand].should eq(true)
+    end
+  end
+
+  context "#node_with_display_name" do
+    before do
+      EvmSpecHelper.create_root_tenant
+    end
+    it "should return node text with Disabled in the text for Disabled domain" do
+      domain = FactoryGirl.create(:miq_ae_domain,
+                                  :name    => "test1",
+                                  :enabled => false)
+      node = TreeNodeBuilder.build(domain, nil, {})
+      node[:title].should eq('test1 (Disabled)')
+    end
+
+    it "should return node text with Locked in the text for Locked domain" do
+      domain = FactoryGirl.create(:miq_ae_domain,
+                                  :name   => "test1",
+                                  :system => true)
+      node = TreeNodeBuilder.build(domain, nil, {})
+      node[:title].should eq('test1 (Locked)')
+    end
+
+    it "should return node text with Locked & Disabled in the text for Locked & Disabled domain" do
+      domain = FactoryGirl.create(:miq_ae_domain,
+                                  :name    => "test1",
+                                  :enabled => false,
+                                  :system  => true)
+      node = TreeNodeBuilder.build(domain, nil, {})
+      node[:title].should eq('test1 (Locked & Disabled)')
+    end
+
+    it "should return node text with no suffix when Domain is not Locked or Disabled" do
+      domain = FactoryGirl.create(:miq_ae_domain, :name => "test1", :parent => nil, :tenant => @root_tenant)
+      node = TreeNodeBuilder.build(domain, nil, {})
+      node[:title].should eq('test1')
     end
   end
 end
