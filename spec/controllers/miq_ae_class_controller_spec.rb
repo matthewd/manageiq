@@ -204,6 +204,7 @@ describe MiqAeClassController do
   end
 
   context "get selected Class/Instance/Method record back" do
+    EvmSpecHelper.create_root_tenant
     let(:miq_ae_domain) { active_record_instance_double("MiqAeDomain", :name => "yet_another_fqname", :id => 1) }
     let(:miq_ae_domain2) { active_record_instance_double("MiqAeDomain", :name => "yet_another_fqname2", :id => 2) }
 
