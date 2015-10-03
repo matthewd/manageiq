@@ -765,11 +765,15 @@ class ApplicationHelper::ToolbarBuilder
     when "Service", "ServiceOrchestration"
       return build_toolbar_hide_button_service(id)
     when "Vm"
+      # maybe use .active? instead of .orphaned?
+      # vm_or_template.rb #1331
       case id
       when "vm_clone"
         return true unless @record.cloneable?
+        return true if @record.orphaned?
       when "vm_publish"
         return true if %w(ManageIQ::Providers::Microsoft::InfraManager::Vm ManageIQ::Providers::Redhat::InfraManager::Vm).include?(@record.type)
+        return true if @record.orphaned?
       when "vm_collect_running_processes"
         return true if (@record.retired || @record.current_state == "never") && !@record.is_available?(:collect_running_processes)
       when "vm_guest_startup", "vm_start", "instance_start", "instance_resume"
@@ -782,8 +786,13 @@ class ApplicationHelper::ToolbarBuilder
         return true unless @record.is_available?(:reboot_guest)
       when "vm_migrate"
         return true unless @record.is_available?(:migrate)
+        return true if @record.orphaned?
       when "vm_reconfigure"
         return true unless @record.reconfigurable?
+      when "vm_retire"
+        return true if @record.orphaned?
+      when "vm_retire_now"
+        return true if @record.orphaned?
       when "vm_stop", "instance_stop"
         return true unless @record.is_available?(:stop)
       when "vm_reset", "instance_reset"
