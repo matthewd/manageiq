@@ -1037,7 +1037,7 @@ module OpsController::OpsRbac
 
     all_roles = MiqUserRole.all
     @edit[:roles] = {}
-    @edit[:roles]["<Choose a role>"] = nil
+    @edit[:roles]["<Choose a Role>"] = nil
     all_roles.each do |r|
       @edit[:roles][r.name] = r.id
     end
