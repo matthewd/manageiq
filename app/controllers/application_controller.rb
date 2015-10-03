@@ -946,19 +946,31 @@ class ApplicationController < ActionController::Base
     @server_options[:ipaddress] = ""
   end
 
-  # Gather information for the report accordians
-  def build_report_listnav(tree_type = "reports", tree = "listnav", mode = "menu")
+  def populate_reports_menu(tree_type = 'reports', mode = 'menu')
     # checking to see if group (used to be role) was selected in menu editor tree, or came in from reports/timeline tree calls
     group = !session[:role_choice].blank? ? MiqGroup.find_by_description(session[:role_choice]) : current_group
     @sb[:rpt_menu] = get_reports_menu(group, tree_type, mode)
+  end
+
+  # Gather information for the report accordians
+  def build_report_listnav(tree_type = "reports", tree = "listnav", mode = "menu")
+    populate_reports_menu(tree_type, mode)
     if tree == "listnav"
       if tree_type == "timeline"
         build_timeline_tree(@sb[:rpt_menu], tree_type)
       else
-        build_reports_tree(:reports, :reports_tree)
+        build_reports_tree
       end
     else
       build_menu_tree(@sb[:rpt_menu], tree_type)
+    end
+  end
+
+  def reports_group_title
+    if @sb[:grp_title] = current_user.admin_user?
+      "#{current_tenant.name} (#{_("All %s") % ui_lookup(:models => "MiqGroup")})"
+    else
+      "#{current_tenant.name} (#{_("%s") % "#{ui_lookup(:model => "MiqGroup")}: #{user.current_group.description}"})"
     end
   end
 
@@ -967,9 +979,7 @@ class ApplicationController < ActionController::Base
     reports = []
     folders = []
     user = current_user
-    @sb[:grp_title] = user.admin_user? ?
-      "#{current_tenant.name} (#{_("All %s") % ui_lookup(:models => "MiqGroup")})" :
-      "#{current_tenant.name} (#{_("%s") % "#{ui_lookup(:model => "MiqGroup")}: #{user.current_group.description}"})"
+    reports_group_title
     @data = []
     if (!group.settings || !group.settings[:report_menus] || group.settings[:report_menus].blank?) || mode == "default"
       # array of all reports if menu not configured
