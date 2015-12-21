@@ -59,7 +59,7 @@
             - params = {:class => "product product-#{tenant.divisible ? "tenant" : "project"}"}
             - if role_allows(:feature => "rbac_tenant_show")
               - params[:class] = "#{params[:class]} pointer"
-              - params.merge!({:onclick => "miqDynatreeActivateNode('rbac_tree', 'tn-#{to_cid(tenant.id)}');",
+              - params.instance_variable_get(:@parameters).merge!({:onclick => "miqDynatreeActivateNode('rbac_tree', 'tn-#{to_cid(tenant.id)}');",
                                :title   => _("View this #{tenant.divisible ? "Tenant" : "Project"}")})
             %span{params}
               = h(tenant.name)
